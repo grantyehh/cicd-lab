@@ -34,10 +34,41 @@ jobs:
         run: npm ci
 
       - name: TypeScript typecheck
-        run: npm run typecheck
+        shell: bash
+        run: |
+          set +e
+          output="$(npm run typecheck 2>&1)"
+          status=$?
+          echo "$output"
+
+          if [ "$status" -ne 0 ]; then
+            while IFS= read -r line; do
+              if [[ "$line" =~ ^([^[:space:]]+)\(([0-9]+),([0-9]+)\):[[:space:]]error[[:space:]](TS[0-9]+):[[:space:]](.*)$ ]]; then
+                echo "::error file=${BASH_REMATCH[1]},line=${BASH_REMATCH[2]},col=${BASH_REMATCH[3]},title=TypeScript ${BASH_REMATCH[4]}::${BASH_REMATCH[5]}"
+              fi
+            done <<< "$output"
+          fi
+
+          exit "$status"
 
       - name: Prettier check
-        run: npm run format:check
+        shell: bash
+        run: |
+          set +e
+          output="$(npx prettier --check . 2>&1)"
+          status=$?
+          echo "$output"
+
+          if [ "$status" -ne 0 ]; then
+            while IFS= read -r line; do
+              if [[ "$line" =~ ^\[warn\][[:space:]](.+)$ ]]; then
+                file="${BASH_REMATCH[1]}"
+                echo "::error file=${file},title=Prettier check failed::Run npm run format to format this file."
+              fi
+            done <<< "$output"
+          fi
+
+          exit "$status"
 
       - name: Test
-        run: npm test
+        run: npm test -- --reporter=github-actions
